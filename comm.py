@@ -33,3 +33,10 @@ def reconnect():
         zircon = serial.Serial(port=port, baudrate=9600, timeout=.1)
     except:
         pass
+
+if __name__ == "__main__":
+    while True:
+        try:
+            print(readline())
+        except:
+            reconnect()

@@ -4,7 +4,8 @@ import math
 from random import randint
 from pygame.locals import *
 from sys import exit
-# import comm
+import comm
+import serial
 
 ''' DISPLAY SETUP '''
 pygame.init()
@@ -46,7 +47,7 @@ font = pygame.font.SysFont("Segoe UI", 25)
 
 ''' DISPLAY FUNCTIONS '''
 def rotate_point(point, angle, ref):
-    angle = math.radians(angle)
+    angle = -math.radians(angle)
     x, y = point
     x -= ref[0]
     y -= ref[1]
@@ -81,7 +82,7 @@ class Field:
         self.padding = 25 # cm -> the distance between field edge and field border
         
         self.tof_front = 100
-        self.tof_left = 100
+        self.tof_left = 50
         self.tof_right = 60
         self.tof_back = 100
         self.theta = 0
@@ -163,6 +164,7 @@ class Field:
             ),
             3
         )
+        # TOF readings
         pygame.draw.line(self.screen, color.BLACK,
             self.field2screen(self.tof_left + (self.width - self.tof_left - self.tof_right)//2, 0),
             self.field2screen(self.tof_left + (self.width - self.tof_left - self.tof_right)//2, self.tof_front)
@@ -179,6 +181,22 @@ class Field:
             self.field2screen(self.width, self.tof_front + (self.height - self.tof_front - self.tof_back)//2),
             self.field2screen(self.width - self.tof_right, self.tof_front + (self.height - self.tof_front - self.tof_back)//2)
         , 3)
+        self.screen.blit( # forward
+            font.render(f"{self.tof_front} cm", True, color.WHITE),
+            [screen_size[0] // 4 - font.size(f"{self.tof_front} cm")[0] // 2, 10]
+        )
+        self.screen.blit( # backward
+            font.render(f"{self.tof_back} cm", True, color.WHITE),
+            [screen_size[0] // 4 - font.size(f"{self.tof_back} cm")[0] // 2, screen_size[1] - 40]
+        )
+        self.screen.blit( # left
+            pygame.transform.rotate(font.render(f"{self.tof_left} cm", True, color.WHITE), 90),
+            [10, screen_size[1] // 2 - font.size(f"{self.tof_left} cm")[0] // 2]
+        )
+        self.screen.blit( # right
+            pygame.transform.rotate(font.render(f"{self.tof_right} cm", True, color.WHITE), 90),
+            [screen_size[0] // 2 - 40, screen_size[1] // 2 - font.size(f"{self.tof_right} cm")[0] // 2]
+        )
         # Robot estimated position
         robot_est = (robot_topleft[0] + robot_bottomright[0]) // 2, (robot_topleft[1] + robot_bottomright[1]) // 2
         pygame.draw.circle(self.screen, color.WHITE, robot_est, 5)
@@ -188,7 +206,7 @@ class Field:
             robot_est[0],
             robot_est[1],
             arrow_points,
-            self.theta,
+            -self.theta,
             stroke = 3
         )
 
@@ -196,7 +214,7 @@ class Robot:
     def __init__(self, screen):
         self.screen = screen
         self.theta = 0
-        self.ir = [randint(0, 1024) for _ in range(24)]
+        self.ir = [0 for _ in range(24)]
         self.line = [randint(0, 1024) for _ in range(24)]
         self.gate = 0
         
@@ -224,8 +242,8 @@ class Robot:
         # ir sensors
         pts = []
         for i in range(len(self.ir)):
-            pt1 = rotate_point([0, -self.radius * screen_size[0] // 100], i * 360 // len(self.ir), [0, 0])
-            pt2 = rotate_point([0, -(self.radius + self.ir[i] / 100) * screen_size[0] // 100], i * 360 // len(self.ir), [0, 0])
+            pt1 = rotate_point([self.radius * screen_size[0] // 100, 0], i * 360 // len(self.ir), [0, 0])
+            pt2 = rotate_point([(self.radius + self.ir[i] / 50) * screen_size[0] // 100, 0], i * 360 // len(self.ir), [0, 0])
             pygame.draw.line(
                 self.screen,
                 color.GREY,
@@ -234,6 +252,12 @@ class Robot:
                 2
             )
             pts.append([pt2[0] + screen_size[0] * 3 // 4, pt2[1] + screen_size[1] // 2])
+
+            ptText= rotate_point([(self.radius + 2) * screen_size[0] // 100, 0], i * 360 // len(self.ir), [0, 0])
+            self.screen.blit(
+                font.render(str(i), True, color.WHITE),
+                [ptText[0] + screen_size[0] * 3 // 4 - font.size(str(i))[0] // 2, ptText[1] + screen_size[1] // 2 - font.size(str(i))[1] // 2]
+            )
         pygame.draw.polygon(self.screen, color.GREY, pts, 2)
         # ir average
         x = 0
@@ -292,11 +316,25 @@ class Robot:
         )
     
     def update(self):
-        ''' FAKE UPDATE -> REMEMBER TO REMOVE '''
+        ''' FAKE UPDATE -> REMEMBER TO REMOVE
         for i in range(len(self.ir)):
             self.ir[i] = min(max(self.ir[i] + randint(-40, 40), 0), 1024)
         for i in range(len(self.line)):
             self.line[i] = min(max(self.line[i] + randint(-40, 40), 0), 1024)
+        '''
+        try:
+            data = comm.readline()
+            status = "ok"
+            if data["type"] == "infra":
+                self.ir = data["info"]
+            elif data["type"] == "gyro":
+                self.theta = data["info"][0]
+        except IndexError:
+            status = "signal lost"
+            comm.reconnect()
+        except serial.serialutil.SerialException:
+            status = "signal lost"
+            comm.reconnect()
 
 ''' MAIN LOOP '''
 clock = pygame.time.Clock()
@@ -304,14 +342,11 @@ clock = pygame.time.Clock()
 field = Field(screen)
 robot = Robot(screen)
 
-theta = 0
 while True:
     # Graphics
     screen.fill(color.BLACK)
 
-    theta = (theta + 1)%360
-    field.theta = theta
-    robot.theta = theta
+    field.theta = robot.theta
     field.draw()
     robot.draw()
     robot.update()
@@ -321,11 +356,11 @@ while True:
         (screen_size[0] // 2 - font.size("Radian Sensor Monitor")[0] // 2, 10)
     )
     screen.blit(
-        font.render("Field View", True, color.WHITE),
+        font.render("Field View", True, color.GREY),
         (20, 10)
     )
     screen.blit(
-        font.render("Robot View", True, color.WHITE),
+        font.render("Robot View", True, color.GREY),
         (screen_size[0] - font.size("Robot View")[0] - 20, 10)
     )
 
