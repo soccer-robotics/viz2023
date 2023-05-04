@@ -38,9 +38,9 @@ arrow_points = [[x*5, y*5] for x, y in arrow_points]
 lg_arrow_points = [[x*2, y*2] for x, y in arrow_points]
 
 mini_arrow_points = [
-    (-10, 10),
+    (-10, -10),
     (0, 0),
-    (10, 10)
+    (-10, 10)
 ]
 
 font = pygame.font.SysFont("Segoe UI", 25)
@@ -215,7 +215,8 @@ class Robot:
         self.screen = screen
         self.theta = 0
         self.ir = [0 for _ in range(24)]
-        self.line = [randint(0, 1024) for _ in range(24)]
+        self.line = [0 for _ in range(24)]
+        self.l_est = [-1, -1] # Line estimation
         self.gate = 0
         
         self.radius = 10 # percent of screen width
@@ -225,7 +226,7 @@ class Robot:
         pygame.draw.circle(self.screen, color.WHITE, (screen_size[0] * 3 // 4, screen_size[1] // 2), self.radius * screen_size[0] // 100, 2)
         # line sensors
         for i in range(len(self.line)):
-            pt = rotate_point([0, -(self.radius - 2) * screen_size[0] // 100], i * 360 // len(self.line), [0, 0])
+            pt = rotate_point([(self.radius - 2) * screen_size[0] // 100, 0], i * 360 // len(self.line), [0, 0])
             pygame.draw.circle(
                 self.screen,
                 [j * (self.line[i] / 1024) for j in color.BLUE],
@@ -239,6 +240,17 @@ class Robot:
                 15,
                 2
             )
+        if self.l_est[0] != -1:
+            pt1 = rotate_point([(self.radius - 2) * screen_size[0] // 100, 0], self.l_est[0] * 360 // len(self.line), [0, 0])
+            pt2 = rotate_point([(self.radius - 2) * screen_size[0] // 100, 0], self.l_est[1] * 360 // len(self.line), [0, 0])
+            pygame.draw.line(
+                self.screen,
+                color.WHITE,
+                [pt1[0] + screen_size[0] * 3 // 4, pt1[1] + screen_size[1] // 2],
+                [pt2[0] + screen_size[0] * 3 // 4, pt2[1] + screen_size[1] // 2],
+                2
+            )
+                
         # ir sensors
         pts = []
         for i in range(len(self.ir)):
@@ -263,16 +275,16 @@ class Robot:
         x = 0
         y = 0
         for i in range(len(self.ir)):
-            pt = rotate_point([0, -(self.radius + self.ir[i] / 100) * screen_size[0] // 100], i * 360 // len(self.ir), [0, 0])
+            pt = rotate_point([(self.radius + self.ir[i] / 100) * screen_size[0] // 100, 0], i * 360 // len(self.ir), [0, 0])
             x += pt[0]
-            y += pt[1]
+            y -= pt[1]
         x /= len(self.ir)
         y /= len(self.ir)
         ball_angle = math.atan2(y, x) * 180 / math.pi
         ball_dist = math.sqrt(x**2 + y**2)
 
-        pt1 = rotate_point([0, -self.radius * screen_size[0] // 100], ball_angle, [0, 0])
-        pt2 = rotate_point([0, -(self.radius + ball_dist) * screen_size[0] // 100], ball_angle, [0, 0])
+        pt1 = rotate_point([self.radius * screen_size[0] // 100, 0], ball_angle, [0, 0])
+        pt2 = rotate_point([(self.radius + ball_dist) * screen_size[0] // 100, 0], ball_angle, [0, 0])
         pygame.draw.line(
             self.screen,
             color.WHITE,
@@ -327,8 +339,15 @@ class Robot:
             status = "ok"
             if data["type"] == "infra":
                 self.ir = data["info"]
+                # angle correction
+                self.ir = [self.ir[23]] + self.ir[:23] 
             elif data["type"] == "gyro":
                 self.theta = data["info"][0]
+            elif data["type"] == "line":
+                self.line = data["info"]
+            elif data["type"] == "l_est":
+                self.l_est = data["info"]
+                
         except IndexError:
             status = "signal lost"
             comm.reconnect()
