@@ -79,7 +79,7 @@ class Field:
         self.width = 182 # cm
         self.height = 243 # cm
 
-        self.padding = 25 # cm -> the distance between field edge and field border
+        self.padding = 12 # cm -> the distance between field edge and field border
         
         self.tof_front = 100
         self.tof_left = 50
@@ -131,8 +131,8 @@ class Field:
             self.screen,
             color.GRAY,
             (
-                self.field2screen(self.padding + 62/2, self.padding)[0],
-                self.field2screen(self.padding + 62/2, self.padding)[1],
+                self.field2screen(self.padding + 80/2, self.padding)[0],
+                self.field2screen(self.padding + 80/2, self.padding)[1],
                 (70 * w) / self.width,
                 (25 * h) / self.height,
             ),
@@ -142,8 +142,8 @@ class Field:
             self.screen,
             color.GRAY,
             (
-                self.field2screen(self.padding + 62/2, self.padding)[0],
-                self.field2screen(self.padding + 62/2, self.height - 25 - self.padding)[1],
+                self.field2screen(self.padding + 80/2, self.padding)[0],
+                self.field2screen(self.padding + 80/2, self.height - 25 - self.padding)[1],
                 (70 * w) / self.width,
                 (25 * h) / self.height,
             ),
@@ -347,6 +347,13 @@ class Robot:
                 self.line = data["info"]
             elif data["type"] == "l_est":
                 self.l_est = data["info"]
+            elif data["type"] == "Ultra":
+                field.tof_right = data["info"][0]
+                field.tof_front = data["info"][1]
+                field.tof_left = data["info"][2]
+                field.tof_back = data["info"][3]
+            else:
+                print(data)
                 
         except IndexError:
             status = "signal lost"
